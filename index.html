@@ -97,14 +97,30 @@ main{max-width:1100px;margin:auto;padding:0 16px}
 #ep input[type=range]{flex:1;padding:0;border:0;background:none}
 #ep input[type=text],#ep select{width:auto;flex:1;background:#ffffff1a;border-color:#ffffff22;color:#fff}
 #ep select option{color:#000}
+.seg{display:flex;gap:6px;justify-content:center}
+.seg button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.lp{display:grid;gap:12px}.lp[hidden]{display:none}
+#login{margin:8vh auto}
+.dots{display:flex;gap:10px;justify-content:center;align-items:center;min-height:28px}
+.dots i{width:14px;height:14px;border-radius:50%;background:var(--fg)}
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kp button{padding:16px 0;font-size:22px;border-radius:18px}
+.pad{width:150px;height:150px;border-radius:50%;margin:6px auto;display:grid;place-items:center;border:2px solid var(--ac);background:color-mix(in srgb,var(--ac) 10%,transparent);color:var(--ac);position:relative;cursor:pointer;padding:0}
+.pad.sm{width:104px;height:104px}.pad.sm svg{width:44px;height:44px}
+.pad:active{transform:scale(.97)}
+.pad.scan::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:3px solid transparent;border-top-color:var(--ac);animation:spin 1s linear infinite}
+.pad.ok{border-color:#16a34a;color:#16a34a;background:#16a34a1a}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.pad.scan::after{animation:none}}
 </style>
 </head>
 <body>
 <div id="login" hidden>
   <h1>Symoh Storage</h1>
-  <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
-  <button class="pri" data-act="login">Sign in</button>
-  <button id="fp" data-act="fplogin" hidden>👆 Sign in with fingerprint</button>
+  <div class="seg" id="lm"></div>
+  <div id="lp-pw" class="lp"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><button class="pri" data-act="login">Sign in</button></div>
+  <div id="lp-pin" class="lp" hidden><div class="dots" id="dots"></div><div class="kp"><button data-act="pd" data-d="1">1</button><button data-act="pd" data-d="2">2</button><button data-act="pd" data-d="3">3</button><button data-act="pd" data-d="4">4</button><button data-act="pd" data-d="5">5</button><button data-act="pd" data-d="6">6</button><button data-act="pd" data-d="7">7</button><button data-act="pd" data-d="8">8</button><button data-act="pd" data-d="9">9</button><button data-act="pdel" aria-label="Delete">⌫</button><button data-act="pd" data-d="0">0</button><button class="pri" data-act="pgo" aria-label="Sign in">✓</button></div></div>
+  <div id="lp-fp" class="lp" hidden><button class="pad" id="fpad" data-act="fplogin" aria-label="Fingerprint pad"><svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" aria-hidden="true"><path d="M10 42V30a22 22 0 0 1 44 0v6"/><path d="M18 46V30a14 14 0 0 1 28 0v14"/><path d="M26 50V30a6 6 0 0 1 12 0v18"/><path d="M32 30v20"/><path d="M46 44v4"/><path d="M14 52v2"/></svg></button><p id="fpt" style="margin:0;color:var(--mu)">Place your finger on the pad</p></div>
 </div>
 <main id="app" hidden>
   <div class="top"><h1>Symoh Storage</h1><input id="q" type="search" placeholder="Search files"><button data-act="fpmenu" title="Fingerprint sign-in" aria-label="Fingerprint sign-in">👆</button><button data-act="logout">Log out</button></div>
@@ -210,29 +226,42 @@ document.addEventListener("click",e=>{
       case"logout":await api({a:"logout"});S.rows=[];S.sel.clear();S.sm=false;S.q="";$("#q").value="";$("#grid").innerHTML="";$("#app").hidden=true;$("#fab").hidden=true;$("#bk").style.display="none";$("#login").hidden=false;$("#pw").focus();fpInit();return;
       case"fplogin":{
         const o=S.fpo;if(!o)return;
+        const pad=$("#fpad"),t=$("#fpt");pad.classList.add("scan");t.textContent="Scanning… use your phone's fingerprint sensor";
         try{
           const c=await navigator.credentials.get({publicKey:{challenge:b64d(o.token.split(".")[0]),rpId:location.hostname,allowCredentials:o.ids.map(id=>({type:"public-key",id:b64d(id)})),userVerification:"required",timeout:60000}});
           const r=c.response;
           await api({a:"pk_login",token:o.token,id:b64e(c.rawId),authenticatorData:b64e(r.authenticatorData),clientDataJSON:b64e(r.clientDataJSON),signature:b64e(r.signature)});
-        }catch(err){fpInit();throw err.name==="NotAllowedError"?new Error("Fingerprint cancelled or not recognised. Try again or use your password."):err}
+          pad.classList.replace("scan","ok");t.textContent="Fingerprint recognised";
+        }catch(err){pad.classList.remove("scan");t.textContent="Place your finger on the pad";fpInit(true);throw err.name==="NotAllowedError"?new Error("Fingerprint cancelled or not recognised. Try again or use your password."):err}
         return load();
       }
       case"fpmenu":{
-        const [l,o]=await Promise.all([api({a:"pk_list"}),api({a:"pk_reg_options"})]);S.fpr=o;
-        const dt=x=>new Date(x).toLocaleDateString();
-        sheet(`<h3>Fingerprint sign-in</h3><p style="margin:0;color:var(--mu)">${window.PublicKeyCredential?"Open the app with your fingerprint, face or screen lock instead of typing the password. The password still works.":"This browser does not support fingerprint sign-in."}</p>${l.keys.map(k=>`<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;min-width:0">${esc(k.name)}<small style="display:block;color:var(--mu)">Added ${dt(k.created_at)}${k.last_used_at?" · used "+dt(k.last_used_at):""}</small></span><button class="dg" data-act="fpdel" data-k="${esc(k.id)}">Remove</button></div>`).join("")}${window.PublicKeyCredential?`<button class="pri" data-act="fpadd">Add this device</button>`:""}`);
+        const [l,o]=await Promise.all([api({a:"pk_list"}),api({a:"pk_reg_options"})]);S.fpr=o;S.hasPin=!!l.pin;
+        const dt=x=>new Date(x).toLocaleDateString(),can=!!window.PublicKeyCredential;
+        sheet(`<h3>Quick sign-in</h3><b>Fingerprint</b><p style="margin:0;color:var(--mu)">${can?"Uses your phone's own fingerprint sensor, so it accepts the fingerprints saved in your phone's settings.":"This browser does not support fingerprint sign-in."}</p>${l.keys.map(k=>`<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;min-width:0">${esc(k.name)}<small style="display:block;color:var(--mu)">Added ${dt(k.created_at)}${k.last_used_at?" · used "+dt(k.last_used_at):""}</small></span><button class="dg" data-act="fpdel" data-k="${esc(k.id)}">Remove</button></div>`).join("")}${can?`<button class="pad sm" id="fpa" data-act="fpadd" aria-label="Add this device">${FP}</button><p id="fpat" style="text-align:center;margin:0;color:var(--mu)">Tap the pad to add this device</p>`:""}<b>App PIN</b><p style="margin:0;color:var(--mu)">A 4 to 8 digit code you set here. It works on any device.</p><button class="pri" data-act="pinset">${l.pin?"Change PIN":"Set a PIN"}</button>${l.pin?`<button class="dg" data-act="pindel">Remove PIN</button>`:""}`);
         return;
       }
       case"fpadd":{
         const o=S.fpr;if(!o)return;
-        const ua=navigator.userAgent,name=/iPhone/.test(ua)?"iPhone":/iPad/.test(ua)?"iPad":/Android/.test(ua)?"Android phone":/Windows/.test(ua)?"Windows PC":/Mac/.test(ua)?"Mac":"This device";
-        const c=await navigator.credentials.create({publicKey:{rp:{name:"Symoh Storage",id:location.hostname},user:{id:new TextEncoder().encode("owner"),name:"owner",displayName:"Owner"},challenge:b64d(o.token.split(".")[0]),pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"},excludeCredentials:o.ids.map(id=>({type:"public-key",id:b64d(id)})),timeout:60000,attestation:"none"}});
-        const r=c.response;
-        if(!r.getPublicKey)throw new Error("This browser can't be used for fingerprint sign-in");
-        await api({a:"pk_register",token:o.token,id:b64e(c.rawId),publicKey:b64e(r.getPublicKey()),alg:r.getPublicKeyAlgorithm(),clientDataJSON:b64e(r.clientDataJSON),name});
-        shut();return toast("Fingerprint added. You can now sign in with it.");
+        const ua=navigator.userAgent,name=/iPhone/.test(ua)?"iPhone":/iPad/.test(ua)?"iPad":/Android/.test(ua)?"Android phone":/Windows/.test(ua)?"Windows PC":/Mac/.test(ua)?"Mac":"This device",t=$("#fpat");
+        b.classList.add("scan");t.textContent="Scanning… use your phone's fingerprint sensor";
+        try{
+          const c=await navigator.credentials.create({publicKey:{rp:{name:"Symoh Storage",id:location.hostname},user:{id:new TextEncoder().encode("owner"),name:"owner",displayName:"Owner"},challenge:b64d(o.token.split(".")[0]),pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"},excludeCredentials:o.ids.map(id=>({type:"public-key",id:b64d(id)})),timeout:60000,attestation:"none"}});
+          const r=c.response;
+          if(!r.getPublicKey)throw new Error("This browser can't be used for fingerprint sign-in");
+          await api({a:"pk_register",token:o.token,id:b64e(c.rawId),publicKey:b64e(r.getPublicKey()),alg:r.getPublicKeyAlgorithm(),clientDataJSON:b64e(r.clientDataJSON),name});
+          b.classList.replace("scan","ok");t.textContent="Fingerprint added";
+        }catch(err){b.classList.remove("scan");t.textContent="Tap the pad to add this device";throw err.name==="NotAllowedError"?new Error("Cancelled or not recognised"):err}
+        setTimeout(shut,1200);return toast("Fingerprint added. You can now sign in with it.");
       }
       case"fpdel":if(confirm("Remove fingerprint sign-in for this device?")){await api({a:"pk_del",id:b.dataset.k});shut();return toast("Removed")}return;
+      case"pinset":sheet(`<h3>${S.hasPin?"Change":"Set"} PIN</h3><input id="p1" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" placeholder="New PIN (4 to 8 digits)"><input id="p2" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" placeholder="Repeat PIN"><button class="pri" data-act="pinsave">Save PIN</button>`);return;
+      case"pinsave":{const p1=$("#p1").value,p2=$("#p2").value;if(!/^\d{4,8}$/.test(p1))throw new Error("Use 4 to 8 digits");if(p1!==p2)throw new Error("The PINs do not match");await api({a:"pin_set",pin:p1});S.hasPin=true;shut();return toast("PIN saved")}
+      case"pindel":if(confirm("Remove the app PIN?")){await api({a:"pin_del"});S.hasPin=false;shut();return toast("PIN removed")}return;
+      case"lm":S.lm=b.dataset.m;try{localStorage.lm=S.lm}catch{}renderLogin();return;
+      case"pd":if(S.pin.length<8){S.pin+=b.dataset.d;pinDraw()}return;
+      case"pdel":S.pin=S.pin.slice(0,-1);pinDraw();return;
+      case"pgo":{if(S.pin.length<4)throw new Error("Enter at least 4 digits");try{await api({a:"pin_login",pin:S.pin})}catch(e){S.pin="";pinDraw();throw e}S.pin="";pinDraw();return load()}
       case"lay":S.lay=S.lay==="grid"?"list":"grid";return render();
       case"smode":S.sm=!S.sm;S.sel.clear();return render();
       case"pick":return $("#file").click();
@@ -388,11 +417,26 @@ $("#ep").addEventListener("input",e=>{
 addEventListener("resize",()=>{if(E)draw()});
 const b64e=x=>btoa(String.fromCharCode(...new Uint8Array(x))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 const b64d=s=>Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
-async function fpInit(){
-  const b=$("#fp");b.hidden=true;S.fpo=null;
-  if(!window.PublicKeyCredential)return;
-  try{const j=await api({a:"pk_options"});if(j.ids.length){S.fpo=j;b.hidden=false}}catch{}
+const FP='<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" aria-hidden="true"><path d="M10 42V30a22 22 0 0 1 44 0v6"/><path d="M18 46V30a14 14 0 0 1 28 0v14"/><path d="M26 50V30a6 6 0 0 1 12 0v18"/><path d="M32 30v20"/><path d="M46 44v4"/><path d="M14 52v2"/></svg>';
+const pinDraw=()=>{const d=$("#dots");if(d)d.innerHTML=S.pin?[...S.pin].map(()=>"<i></i>").join(""):"<span style=\"color:var(--mu)\">Enter your PIN</span>"};
+function renderLogin(){
+  const ms=[["pw","Password"]];if(S.hasPin)ms.push(["pin","PIN"]);if(S.fpo)ms.push(["fp","Fingerprint"]);
+  $("#lm").innerHTML=ms.length>1?ms.map(([k,n])=>`<button class="${S.lm===k?"on":""}" data-act="lm" data-m="${k}">${n}</button>`).join(""):"";
+  ["pw","pin","fp"].forEach(k=>$("#lp-"+k).hidden=S.lm!==k);
 }
+async function fpInit(keep){
+  S.fpo=null;S.hasPin=false;if(!keep)S.pin="";
+  try{const j=await api({a:"pk_options"});S.hasPin=!!j.pin;if(window.PublicKeyCredential&&j.ids.length)S.fpo=j}catch{}
+  if(!keep){let last="";try{last=localStorage.lm||""}catch{}const ok={pw:1,pin:S.hasPin,fp:!!S.fpo};S.lm=ok[last]?last:S.fpo?"fp":S.hasPin?"pin":"pw"}
+  else if(S.lm==="fp"&&!S.fpo)S.lm=S.hasPin?"pin":"pw";
+  renderLogin();pinDraw();
+}
+addEventListener("keydown",e=>{
+  if($("#login").hidden||S.lm!=="pin")return;
+  if(/^\d$/.test(e.key)&&S.pin.length<8){S.pin+=e.key;pinDraw()}
+  else if(e.key==="Backspace"){S.pin=S.pin.slice(0,-1);pinDraw()}
+  else if(e.key==="Enter")document.querySelector('[data-act="pgo"]').click();
+});
 const Q=[];
 function drawQ(){
   const q=$("#uq");q.style.display=Q.length?"block":"none";

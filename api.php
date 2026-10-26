@@ -27,7 +27,7 @@ if ($a === 'login') {
 }
 if ($a === 'logout') { setc('', time() - 3600); out(['ok' => true]); }
 if ($a === 'pk_options') {
-  out(['token' => new_challenge(), 'ids' => array_column(q('select id from passkeys')->fetchAll(), 'id')]);
+  out(['token' => new_challenge(), 'ids' => array_column(q('select id from passkeys')->fetchAll(), 'id'), 'pin' => (bool)q('select 1 from app_pin')->fetchColumn()]);
 }
 if ($a === 'pk_login') {
   try {
@@ -42,6 +42,28 @@ if ($a === 'pk_login') {
     setc("$until." . sign((string)$until), $until);
   } catch (Throwable $err) {
     out(['error' => $err->getMessage()], 401);
+  }
+  out(['ok' => true]);
+}
+if ($a === 'pin_login') {
+  try {
+    $p = q('select pin_hash, fails, locked_until from app_pin where id = 1')->fetch();
+    if (!$p) out(['error' => 'No PIN is set'], 401);
+    if ($p['locked_until'] && strtotime($p['locked_until']) > time()) {
+      $m = (int)ceil((strtotime($p['locked_until']) - time()) / 60);
+      out(['error' => "Too many wrong tries. Try again in $m minute(s), or use your password."], 429);
+    }
+    if (!password_verify((string)($b['pin'] ?? ''), $p['pin_hash'])) {
+      $f = (int)$p['fails'] + 1;
+      if ($f >= 5) q("update app_pin set fails = 0, locked_until = now() + interval '15 minutes' where id = 1");
+      else q('update app_pin set fails = ? where id = 1', [$f]);
+      out(['error' => $f >= 5 ? 'Too many wrong tries. The PIN is locked for 15 minutes.' : 'Wrong PIN. ' . (5 - $f) . ' tries left.'], 401);
+    }
+    q('update app_pin set fails = 0, locked_until = null where id = 1');
+    $until = time() + 30 * 86400;
+    setc("$until." . sign((string)$until), $until);
+  } catch (Throwable $err) {
+    out(['error' => $err->getMessage()], 500);
   }
   out(['ok' => true]);
 }
@@ -124,7 +146,16 @@ try {
       out(['ok' => true]);
     }
     case 'pk_list':
-      out(['keys' => q('select id, name, created_at, last_used_at from passkeys order by created_at')->fetchAll()]);
+      out(['keys' => q('select id, name, created_at, last_used_at from passkeys order by created_at')->fetchAll(), 'pin' => (bool)q('select 1 from app_pin')->fetchColumn()]);
+    case 'pin_set': {
+      $pin = (string)($b['pin'] ?? '');
+      if (!preg_match('/^\d{4,8}$/', $pin)) out(['error' => 'PIN must be 4 to 8 digits'], 400);
+      q('insert into app_pin (id, pin_hash) values (1, ?) on conflict (id) do update set pin_hash = excluded.pin_hash, fails = 0, locked_until = null', [password_hash($pin, PASSWORD_DEFAULT)]);
+      out(['ok' => true]);
+    }
+    case 'pin_del':
+      q('delete from app_pin');
+      out(['ok' => true]);
     case 'pk_del':
       q('delete from passkeys where id = ?', [(string)$b['id']]);
       out(['ok' => true]);

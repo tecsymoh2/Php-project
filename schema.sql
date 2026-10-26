@@ -7,3 +7,4 @@ alter table files add column if not exists share_expires_at timestamptz;
 alter table files add column if not exists share_views int not null default 0;
 alter table files add column if not exists thumb boolean not null default false;
 create table if not exists passkeys (id text primary key, public_key text not null, alg int not null default -7, name text not null default 'This device', created_at timestamptz not null default now(), last_used_at timestamptz);
+create table if not exists app_pin (id int primary key default 1 check (id = 1), pin_hash text not null, fails int not null default 0, locked_until timestamptz);
