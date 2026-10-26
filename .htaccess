@@ -1,0 +1,8 @@
+DirectoryIndex index.html index.php
+RewriteEngine On
+# yourdomain.com/screenshot-23.png  ->  f.php (only when no real file has that name)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^([^/]+\.[A-Za-z0-9]+)$ f.php?s=$1 [L,QSA]
+<FilesMatch "^(config\.php|lib\.php|schema\.sql|README\.md|Dockerfile)$">
+  Require all denied
+</FilesMatch>
