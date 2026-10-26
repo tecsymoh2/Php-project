@@ -104,9 +104,10 @@ main{max-width:1100px;margin:auto;padding:0 16px}
   <h1>Symoh Storage</h1>
   <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
   <button class="pri" data-act="login">Sign in</button>
+  <button id="fp" data-act="fplogin" hidden>👆 Sign in with fingerprint</button>
 </div>
 <main id="app" hidden>
-  <div class="top"><h1>Symoh Storage</h1><input id="q" type="search" placeholder="Search files"><button data-act="logout">Log out</button></div>
+  <div class="top"><h1>Symoh Storage</h1><input id="q" type="search" placeholder="Search files"><button data-act="fpmenu" title="Fingerprint sign-in" aria-label="Fingerprint sign-in">👆</button><button data-act="logout">Log out</button></div>
   <div class="us" id="us"></div>
   <div class="row" id="nav"></div>
   <div class="row" id="fo"></div>
@@ -206,7 +207,32 @@ document.addEventListener("click",e=>{
   run(async()=>{
     switch(act){
       case"login":await api({a:"login",password:$("#pw").value});$("#pw").value="";return load();
-      case"logout":await api({a:"logout"});S.rows=[];S.sel.clear();S.sm=false;S.q="";$("#q").value="";$("#grid").innerHTML="";$("#app").hidden=true;$("#fab").hidden=true;$("#bk").style.display="none";$("#login").hidden=false;$("#pw").focus();return;
+      case"logout":await api({a:"logout"});S.rows=[];S.sel.clear();S.sm=false;S.q="";$("#q").value="";$("#grid").innerHTML="";$("#app").hidden=true;$("#fab").hidden=true;$("#bk").style.display="none";$("#login").hidden=false;$("#pw").focus();fpInit();return;
+      case"fplogin":{
+        const o=S.fpo;if(!o)return;
+        try{
+          const c=await navigator.credentials.get({publicKey:{challenge:b64d(o.token.split(".")[0]),rpId:location.hostname,allowCredentials:o.ids.map(id=>({type:"public-key",id:b64d(id)})),userVerification:"required",timeout:60000}});
+          const r=c.response;
+          await api({a:"pk_login",token:o.token,id:b64e(c.rawId),authenticatorData:b64e(r.authenticatorData),clientDataJSON:b64e(r.clientDataJSON),signature:b64e(r.signature)});
+        }catch(err){fpInit();throw err.name==="NotAllowedError"?new Error("Fingerprint cancelled or not recognised. Try again or use your password."):err}
+        return load();
+      }
+      case"fpmenu":{
+        const [l,o]=await Promise.all([api({a:"pk_list"}),api({a:"pk_reg_options"})]);S.fpr=o;
+        const dt=x=>new Date(x).toLocaleDateString();
+        sheet(`<h3>Fingerprint sign-in</h3><p style="margin:0;color:var(--mu)">${window.PublicKeyCredential?"Open the app with your fingerprint, face or screen lock instead of typing the password. The password still works.":"This browser does not support fingerprint sign-in."}</p>${l.keys.map(k=>`<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;min-width:0">${esc(k.name)}<small style="display:block;color:var(--mu)">Added ${dt(k.created_at)}${k.last_used_at?" · used "+dt(k.last_used_at):""}</small></span><button class="dg" data-act="fpdel" data-k="${esc(k.id)}">Remove</button></div>`).join("")}${window.PublicKeyCredential?`<button class="pri" data-act="fpadd">Add this device</button>`:""}`);
+        return;
+      }
+      case"fpadd":{
+        const o=S.fpr;if(!o)return;
+        const ua=navigator.userAgent,name=/iPhone/.test(ua)?"iPhone":/iPad/.test(ua)?"iPad":/Android/.test(ua)?"Android phone":/Windows/.test(ua)?"Windows PC":/Mac/.test(ua)?"Mac":"This device";
+        const c=await navigator.credentials.create({publicKey:{rp:{name:"Symoh Storage",id:location.hostname},user:{id:new TextEncoder().encode("owner"),name:"owner",displayName:"Owner"},challenge:b64d(o.token.split(".")[0]),pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"},excludeCredentials:o.ids.map(id=>({type:"public-key",id:b64d(id)})),timeout:60000,attestation:"none"}});
+        const r=c.response;
+        if(!r.getPublicKey)throw new Error("This browser can't be used for fingerprint sign-in");
+        await api({a:"pk_register",token:o.token,id:b64e(c.rawId),publicKey:b64e(r.getPublicKey()),alg:r.getPublicKeyAlgorithm(),clientDataJSON:b64e(r.clientDataJSON),name});
+        shut();return toast("Fingerprint added. You can now sign in with it.");
+      }
+      case"fpdel":if(confirm("Remove fingerprint sign-in for this device?")){await api({a:"pk_del",id:b.dataset.k});shut();return toast("Removed")}return;
       case"lay":S.lay=S.lay==="grid"?"list":"grid";return render();
       case"smode":S.sm=!S.sm;S.sel.clear();return render();
       case"pick":return $("#file").click();
@@ -360,6 +386,13 @@ $("#ep").addEventListener("input",e=>{
   if(e.target.id==="xf"){E.fmt=e.target.value;panel()}
 });
 addEventListener("resize",()=>{if(E)draw()});
+const b64e=x=>btoa(String.fromCharCode(...new Uint8Array(x))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const b64d=s=>Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
+async function fpInit(){
+  const b=$("#fp");b.hidden=true;S.fpo=null;
+  if(!window.PublicKeyCredential)return;
+  try{const j=await api({a:"pk_options"});if(j.ids.length){S.fpo=j;b.hidden=false}}catch{}
+}
 const Q=[];
 function drawQ(){
   const q=$("#uq");q.style.display=Q.length?"block":"none";
@@ -403,6 +436,7 @@ addEventListener("paste",e=>{
   if(fs.length)intake(fs);
 });
 run(load).then(()=>{if($("#app").hidden)$("#login").hidden=false});
+fpInit();
 </script>
 </body>
 </html>

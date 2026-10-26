@@ -60,3 +60,31 @@ function wipe(array $rows): void {
     q('delete from files where id = ?', [$r['id']]);
   }
 }
+
+// ---- Fingerprint / passkeys (WebAuthn) ----
+function b64u(string $b): string { return rtrim(strtr(base64_encode($b), '+/', '-_'), '='); }
+function unb64(string $s): string { return (string)base64_decode(strtr($s, '-_', '+/') . str_repeat('=', (4 - strlen($s) % 4) % 4)); }
+function new_challenge(): string { $r = b64u(random_bytes(32)); $exp = time() + 600; return "$r.$exp." . sign("pk$r$exp"); }
+function read_challenge(string $tok): ?string {
+  [$r, $exp, $sig] = array_pad(explode('.', $tok, 3), 3, '');
+  return $r !== '' && (int)$exp > time() && hash_equals(sign("pk$r$exp"), $sig) ? $r : null;
+}
+function host_of(): string { return trim(explode(',', $_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '')[0]); }
+function check_client(string $cdB64, string $type, string $chal, string $host): void {
+  $cd = json_decode(unb64($cdB64), true);
+  if (!is_array($cd) || ($cd['type'] ?? '') !== $type || ($cd['challenge'] ?? '') !== $chal) throw new Exception('Challenge check failed');
+  $o = parse_url($cd['origin'] ?? '');
+  if (!$o || ($o['host'] ?? '') . (isset($o['port']) ? ':' . $o['port'] : '') !== $host) throw new Exception('Origin check failed');
+}
+function spki_pem(string $spkiB64): string {
+  return "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode(unb64($spkiB64)), 64, "\n") . "-----END PUBLIC KEY-----\n";
+}
+function verify_assertion(string $spki, string $authData, string $cdB64, string $sig, string $host): bool {
+  $ad = unb64($authData);
+  if (strlen($ad) < 37) return false;
+  if (substr($ad, 0, 32) !== hash('sha256', explode(':', $host)[0], true)) return false;
+  $flags = ord($ad[32]);
+  if (!($flags & 1) || !($flags & 4)) return false; // user present and verified
+  $data = $ad . hash('sha256', unb64($cdB64), true);
+  return openssl_verify($data, unb64($sig), spki_pem($spki), OPENSSL_ALGO_SHA256) === 1;
+}

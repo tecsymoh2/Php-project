@@ -6,3 +6,4 @@ alter table files add column if not exists share_slug text unique;
 alter table files add column if not exists share_expires_at timestamptz;
 alter table files add column if not exists share_views int not null default 0;
 alter table files add column if not exists thumb boolean not null default false;
+create table if not exists passkeys (id text primary key, public_key text not null, alg int not null default -7, name text not null default 'This device', created_at timestamptz not null default now(), last_used_at timestamptz);

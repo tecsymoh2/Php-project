@@ -26,6 +26,25 @@ if ($a === 'login') {
   out(['ok' => true]);
 }
 if ($a === 'logout') { setc('', time() - 3600); out(['ok' => true]); }
+if ($a === 'pk_options') {
+  out(['token' => new_challenge(), 'ids' => array_column(q('select id from passkeys')->fetchAll(), 'id')]);
+}
+if ($a === 'pk_login') {
+  try {
+    $chal = read_challenge((string)($b['token'] ?? ''));
+    if (!$chal) throw new Exception('Expired. Please try again.');
+    $host = host_of();
+    check_client((string)($b['clientDataJSON'] ?? ''), 'webauthn.get', $chal, $host);
+    $k = q('select id, public_key from passkeys where id = ?', [(string)($b['id'] ?? '')])->fetch();
+    if (!$k || !verify_assertion($k['public_key'], (string)($b['authenticatorData'] ?? ''), (string)($b['clientDataJSON'] ?? ''), (string)($b['signature'] ?? ''), $host)) throw new Exception('Fingerprint not recognised');
+    q('update passkeys set last_used_at = now() where id = ?', [$k['id']]);
+    $until = time() + 30 * 86400;
+    setc("$until." . sign((string)$until), $until);
+  } catch (Throwable $err) {
+    out(['error' => $err->getMessage()], 401);
+  }
+  out(['ok' => true]);
+}
 if (!authed()) out(['error' => 'Not signed in'], 401);
 
 try {
@@ -93,6 +112,22 @@ try {
       q('update files set share_slug = ?, share_expires_at = ? where id = ?', [$s, $days ? gmdate('c', time() + $days * 86400) : null, $b['id']]);
       out(['slug' => $s]);
     }
+    case 'pk_reg_options':
+      out(['token' => new_challenge(), 'ids' => array_column(q('select id from passkeys')->fetchAll(), 'id')]);
+    case 'pk_register': {
+      $chal = read_challenge((string)($b['token'] ?? ''));
+      if (!$chal) out(['error' => 'Expired. Please try again.'], 400);
+      check_client((string)($b['clientDataJSON'] ?? ''), 'webauthn.create', $chal, host_of());
+      if (!openssl_pkey_get_public(spki_pem((string)($b['publicKey'] ?? '')))) out(['error' => 'Bad public key'], 400);
+      q('insert into passkeys (id, public_key, alg, name) values (?,?,?,?) on conflict (id) do nothing',
+        [(string)$b['id'], (string)$b['publicKey'], (int)($b['alg'] ?? -7), substr((string)($b['name'] ?? 'This device'), 0, 60)]);
+      out(['ok' => true]);
+    }
+    case 'pk_list':
+      out(['keys' => q('select id, name, created_at, last_used_at from passkeys order by created_at')->fetchAll()]);
+    case 'pk_del':
+      q('delete from passkeys where id = ?', [(string)$b['id']]);
+      out(['ok' => true]);
     case 'unpublish':
       q('update files set share_slug = null, share_expires_at = null where id = ?', [$b['id']]);
       out(['ok' => true]);
