@@ -127,7 +127,7 @@ try {
     case 'publish': {
       $cur = q('select share_slug from files where id = ?', [$b['id']])->fetchColumn();
       $s = strtolower((string)(($b['slug'] ?? '') ?: $cur));
-      if (!preg_match('/^[a-z0-9][a-z0-9._-]{0,100}\.[a-z0-9]{1,8}$/', $s) || $s === 'index.html' || $s === 'api.php')
+      if (!preg_match('/^[a-z0-9][a-z0-9._-]{0,100}\.[a-z0-9]{1,8}$/', $s) || preg_match('/^(index|api|f|lib|config|setup|manifest|icon)\.(php|html)$/', $s))
         out(['error' => 'Link name must look like photo-1.png'], 400);
       if (q('select 1 from files where share_slug = ? and id <> ?', [$s, $b['id']])->fetchColumn()) out(['error' => 'That link name is already used'], 409);
       $days = (int)($b['days'] ?? 0);
