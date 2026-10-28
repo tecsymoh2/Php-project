@@ -26,12 +26,12 @@ function authed(): bool {
 }
 
 // ---- S3 (AWS Signature V4, presigned URLs, no SDK needed) ----
-function presign(string $method, string $key, int $expires = 3600, array $extra = []): string {
+function presign(string $method, string $key, int $expires = 3600, array $extra = [], ?int $at = null): string {
   $host = parse_url(S3_ENDPOINT, PHP_URL_HOST);
   $port = parse_url(S3_ENDPOINT, PHP_URL_PORT);
   $hostHeader = $port ? "$host:$port" : $host;
   $path = '/' . S3_BUCKET . '/' . implode('/', array_map('rawurlencode', explode('/', $key)));
-  $now = gmdate('Ymd\THis\Z'); $date = substr($now, 0, 8);
+  $now = gmdate('Ymd\THis\Z', $at ?? time()); $date = substr($now, 0, 8);
   $scope = $date . '/' . S3_REGION . '/s3/aws4_request';
   $params = $extra + [
     'X-Amz-Algorithm' => 'AWS4-HMAC-SHA256',
@@ -46,6 +46,10 @@ function presign(string $method, string $key, int $expires = 3600, array $extra 
   $sts = "AWS4-HMAC-SHA256\n$now\n$scope\n" . hash('sha256', $canon);
   $k = hash_hmac('sha256', 'aws4_request', hash_hmac('sha256', 's3', hash_hmac('sha256', S3_REGION, hash_hmac('sha256', $date, 'AWS4' . S3_SECRET, true), true), true), true);
   return rtrim(S3_ENDPOINT, '/') . $path . '?' . $qs . '&X-Amz-Signature=' . hash_hmac('sha256', $sts, $k);
+}
+// Same link for 6 hours, so browsers reuse photos they already downloaded
+function presign_stable(string $key): string {
+  return presign('GET', $key, 43200, ['response-cache-control' => 'private, max-age=21600'], intdiv(time(), 21600) * 21600);
 }
 function s3_delete(string $key): void {
   $ch = curl_init(presign('DELETE', $key, 300));

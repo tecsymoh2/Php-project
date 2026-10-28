@@ -3,8 +3,13 @@
 require __DIR__ . '/lib.php';
 
 $s = strtolower((string)($_GET['s'] ?? ''));
-$f = q('select key,name,type,size,share_expires_at from files where share_slug = ? and trashed_at is null', [$s])->fetch();
+$f = q('select key,name,type,size,share_expires_at,share_views,share_max_views,share_pass,owner from files where share_slug = ? and trashed_at is null and ready', [$s])->fetch();
 if (!$f || ($f['share_expires_at'] && strtotime($f['share_expires_at']) < time())) { http_response_code(404); exit('Not found'); }
+if ($f['share_pass']) { http_response_code(403); exit('This link is password protected. Open it on the main site.'); }
+if ($f['share_max_views'] && (int)$f['share_views'] >= (int)$f['share_max_views']) { http_response_code(404); exit('Not found'); }
+if ($f['owner']) {
+  try { if (tf(q('select suspended from developers where id = ?', [$f['owner']])->fetchColumn())) { http_response_code(404); exit('Not found'); } } catch (Throwable $e) { /* no developers table: ignore */ }
+}
 
 $range = $_SERVER['HTTP_RANGE'] ?? '';
 if ($range === '' || strpos($range, 'bytes=0-') === 0) q('update files set share_views = share_views + 1 where share_slug = ?', [$s]);
@@ -34,7 +39,7 @@ curl_setopt_array($ch, [
       header('Content-Disposition: ' . ($dl ? 'attachment' : 'inline') . "; filename=\"$fn\"");
       if (!preg_match('#^(video|audio)/|^image/(?!svg)#', (string)$f['type'])) header('Content-Security-Policy: sandbox');
       header('X-Content-Type-Options: nosniff');
-      header('Cache-Control: public, max-age=300');
+      header('Cache-Control: ' . ($f['share_max_views'] ? 'private, no-store' : 'public, max-age=300'));
       return $n;
     }
     [$k, $v] = array_pad(explode(':', $l, 2), 2, '');

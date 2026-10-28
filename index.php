@@ -192,7 +192,7 @@ function render(){
   bar();
 }
 function tile(f){
-  const k=kind(f),th=k==="image"?`<img loading="lazy" src="${f.thumb||f.url}"${f.thumb?` data-full="${f.url}" onerror="this.onerror=null;this.src=this.dataset.full"`:""} alt="">`:k==="video"?`<video src="${f.url}#t=0.1" preload="metadata" muted playsinline></video><i class="pl">▶</i>`:`<b>${esc(ext(f))}</b>`;
+  const k=kind(f),th=k==="image"?`<img loading="lazy" src="${f.thumb||f.url}"${f.thumb?` data-full="${f.url}" onerror="this.onerror=null;this.src=this.dataset.full"`:""} alt="">`:k==="video"?`<video src="${f.url}" preload="none" muted playsinline></video><i class="pl">▶</i>`:`<b>${esc(ext(f))}</b>`;
   return `<div class="t ${S.sel.has(f.id)?"sel":""}" data-id="${f.id}"><div class="th" data-act="open">${th}${f.share_slug?`<i class="bdg">🔗</i>`:""}${f.favorite?`<i class="bdg f">★</i>`:""}<span class="ck"></span></div><div class="nm">${esc(f.name)}<small>${fmt(f.size)}${f.folder?" · "+esc(f.folder):""}</small></div><button class="mo" data-act="more" aria-label="More">⋯</button></div>`;
 }
 function bar(){

@@ -84,8 +84,8 @@ try {
         $r['size'] = (int)$r['size'];
         $r['favorite'] = tf($r['favorite']);
         $r['share_views'] = (int)$r['share_views'];
-        $r['thumb'] = tf($r['thumb']) ? presign('GET', $k . '.t') : null;
-        $r['url'] = preg_match('#^(image|video|audio)/|^application/pdf$#', (string)$r['type']) ? presign('GET', $k) : null;
+        $r['thumb'] = tf($r['thumb']) ? presign_stable($k . '.t') : null;
+        $r['url'] = preg_match('#^(image|video|audio)/|^application/pdf$#', (string)$r['type']) ? presign_stable($k) : null;
         return $r;
       }, $rows)]);
     }
